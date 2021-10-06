@@ -259,7 +259,7 @@ class dataset():
     def create_masks(self):
 
         empty_frames = int(floor(self.sr * (self.sec * self.spk_percent)))
-
+        empty_frames = int(floor(empty_frames *np.random.randint(70, 130)/100))
         #so vou permitir entre 1 e 3 alternacoes entre os speakers
         mask = np.ones(self.size_of_signals)
         start_point = int(floor((np.random.randint(80, 120)/100)*self.sr))
