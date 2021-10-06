@@ -9,14 +9,16 @@
 import argparse
 import os
 import numpy as np
-import glob
 import nprirgen
 import soundfile as sf
 import logging 
 from pathlib import Path
-
+from typing import Union
 from tqdm import tqdm
 from scipy import signal
+
+logging.basicConfig(filename='test.log', level=logging.DEBUG)
+
 
 def list_inputs(input_dir, list):
     for f in input_dir.iterdir():
@@ -27,6 +29,19 @@ def list_inputs(input_dir, list):
     return list
 
 
+def list_speakers(input_dir: Union[str, Path]):
+    '''
+    input is folder with multiple speakers divided into folders
+    output is a list of lists, each internal list contains speech of a single speaker
+
+    input dir : str or P
+    '''
+    output = []
+    inp_dir = Path(input_dir)
+    for f in inp_dir.iterdir():
+        if os.path.isdir(f):
+            output.append(list_inputs(f, []))
+    return output
 
 def wavwrite_quantize(samples):
     return np.int16(np.round((2 ** 15) * samples))
@@ -50,8 +65,9 @@ class dataset():
         self.sec = sec
         self.size_of_signals = sec * sr  # fixed len of the signal 4secXfs
         # names of all the signals fiels
-        self.names = list_inputs(Path(path), [])
-        self.len = len(self.names)  # len of the entire dataset
+        self.names = list_speakers(path)
+        self.len = [len(x) for x in self.names]  # len of each speaker
+        self.total_len = len(self.len)
         self.noise_names = list_inputs(Path(self.noise_path), [])
         self.noise_len = len(self.noise_names)
 
@@ -60,11 +76,17 @@ class dataset():
         self.num_of_speakers = number_of_speakers
         # (num_speakers,singlas)
         signals = np.zeros((self.num_of_speakers, self.size_of_signals))
-        sig_indx = np.random.randint(
-            low=0, high=self.len, size=self.num_of_speakers)
+
+        #random speakers choice
+        sig_indx = np.random.choice(self.total_len, number_of_speakers, replace=False)
+        
+        #random input from speaker choice
+        sig_ind_inp = [np.random.randint(0, high=self.len[i], size=1)[0] for i in sig_indx]
+        
         names = list()
         for i in range(self.num_of_speakers):
-            name = self.names[sig_indx[i]]
+            name = self.names[sig_indx[i]][sig_ind_inp[i]]
+            logging.info(name.split('/')[-3])
             names.append(os.path.basename(name)[:-4])
             s, fs = sf.read(name)
             if len(s.shape) > 1:
@@ -82,6 +104,8 @@ class dataset():
                 temp_noise = np.random.randn(self.size_of_signals,) * noise_scale
                 signals[i] = temp_noise
                 signals[i, 0:l] = signals[i, 0:l] + s
+        logging.info('---')
+        
         return signals, names
 
     def position_valid(self, room_dims, speaker_pos):
@@ -166,7 +190,8 @@ class dataset():
             return s[0:self.size_of_signals]
 
     def gen_scene(self, scenario_num_of_speakers, scene_i, current_write_path):
-        S, sig_idx = self.fetch_signals(scenario_num_of_speakers)
+       
+        S, sig_idx = self.fetch_signals(scenario_num_of_speakers) 
         scenario_RT60 = round(np.random.uniform(low=0.1, high=1.0), 2)
         x = round(np.random.uniform(low=4, high=7), 2)
         y = round(np.random.uniform(low=4, high=7), 2)
@@ -213,15 +238,18 @@ class dataset():
 
 
 def main(args):
+  
     Data = dataset(args.in_path, args.noise_path, args.sr, args.sec)
     if not os.path.exists(args.out_path):
         os.mkdir(args.out_path)
-
+  
     for i in tqdm(np.arange(args.num_of_scenes)):
+  
         Data.gen_scene(args.num_of_speakers, i, args.out_path)
 
 
 if __name__ == "__main__":
+  
     parser = argparse.ArgumentParser("Mode")
     parser.add_argument('--in_path', type=str, default='/home/dalissonfigueiredo/repos/swave_facebook_implementation/dataset_creation/vox_celeb', help='')
     parser.add_argument('--out_path', type=str, default='/home/dalissonfigueiredo/repos/swave_facebook_implementation/dataset_creation/result', help='')
@@ -231,6 +259,5 @@ if __name__ == "__main__":
     parser.add_argument('--sec', type=int, default=4, help='')
     parser.add_argument('--sr', type=int, default=16000, help='')
     args = parser.parse_args()
-
-    logging.info(args)
+    out = list_speakers(args.in_path)
     main(args)
