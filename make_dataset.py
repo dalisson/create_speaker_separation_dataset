@@ -17,7 +17,7 @@ from typing import Union
 from tqdm import tqdm
 from scipy import signal
 from math import floor
-logging.basicConfig(filename='test.log', level=logging.DEBUG)
+logging.basicConfig(filename='execution.log', level=logging.DEBUG)
 
 
 def list_inputs(input_dir, list):
@@ -63,7 +63,7 @@ class dataset():
         self.noise_path = noise_path
         self.sr = sr
         self.sec = sec
-        self.size_of_signals = sec * sr  # fixed len of the signal 4secXfs
+        self.size_of_signals = sec * sr # fixed len of the signal 4secXfs
         # names of all the signals fiels
         self.names = list_speakers(path)
         self.len = [len(x) for x in self.names]  # len of each speaker
@@ -72,12 +72,14 @@ class dataset():
         self.noise_len = len(self.noise_names)
         assert min(self.len) > 4
         self.spk_percent = spk_percent
+        self.created_examples = 0
 
     def fetch_signals(self, number_of_speakers):
         '''
         Busca os arquivos de audio e mistura sinais de ruido 
         output : audio do tamanho especificado + ruidos
         '''
+        logging.info('starting fetch signals')
         # read random speakers
         self.num_of_speakers = number_of_speakers
         # (num_speakers,singlas)
@@ -90,13 +92,17 @@ class dataset():
         sig_ind_inp = [np.random.randint(0, high=self.len[i], size=1)[0] for i in sig_indx]
         masks = self.create_masks()
         names = list()
+        
         for i in range(self.num_of_speakers):
             name = self.names[sig_indx[i]][sig_ind_inp[i]]
-            logging.info(name.split('/')[-3])
+            logging.info("file %s" % name)
             names.append(os.path.basename(name)[:-4])
             s = self.load_necessary_audio(sig_indx[i], sig_ind_inp[i])
+            logging.info("necessary audio loaded")
             if len(s.shape) > 1:
                 s = s[:, 0]
+            #resample audio to 8000hz
+            #s = signal.resample(s, s.shape[0] // 2)
             s = quantize(s)
             l = len(s)
             if l > self.size_of_signals:
@@ -109,6 +115,7 @@ class dataset():
                 temp_noise = np.random.randn(self.size_of_signals,) * noise_scale
                 signals[i] = temp_noise
                 signals[i, 0:l] = signals[i, 0:l] + s
+        logging.info("ending fetching signal")
         logging.info('---')
         
         return signals, names
@@ -124,6 +131,7 @@ class dataset():
             n_s, _ = sf.read(new_name)
             s = np.append(s, n_s)
         return s
+
     def position_valid(self, room_dims, speaker_pos):
         if (speaker_pos[0] > 0.5 and speaker_pos[0] < room_dims[0]-0.5 and
                 speaker_pos[1] > 0.5 and speaker_pos[1] < room_dims[1]-0.5):
@@ -132,6 +140,7 @@ class dataset():
             return 0
 
     def room_gen(self, room_dims, RT60):
+        logging.info("generating room")
         mic_x = room_dims[0] // 2 + np.random.uniform(low=-0.15, high=0.15)
         mic_y = room_dims[1] // 2 + np.random.uniform(low=-0.15, high=0.15)
         mic_pos = [round(mic_x, 2), round(mic_y, 2), 1.5]  # x,y,z in meters
@@ -186,27 +195,34 @@ class dataset():
                 L, s, r, soundVelocity=c, fs=self.sr, reverbTime=0, nSamples=n, micType=mtype, nOrder=order, nDim=dim, isHighPassFilter=hp_filter)
             Systems[i] = h_temp
             Systems_anechoic[i] = h_temp_anechoic
-
+        logging.info("ending generating room")
+        logging.info("------")
         return Systems, Systems_anechoic
 
     def fetch_noise(self):
+        logging.info("fetching noise sound")
         noise_idex = np.random.randint(low=0, high=self.noise_len, size=1)
         name = self.noise_names[noise_idex[0]]
-
+        logging.info("noise file: %s" % name.split('/')[-1])
+        
         s, fs = sf.read(name)
         if len(s.shape) > 1:
             s = s[:, 0]
-        s = signal.resample(s, s.shape[0] // 2)
+       #s = signal.resample(s, s.shape[0] // 2)
         s = quantize(s)
         if len(s) < self.size_of_signals:
             temp_noise = np.random.randn(self.size_of_signals,) * 0.01
             temp_noise[0:len(s)] = temp_noise[0:len(s)] + s[0:len(s)]
+            logging.info('ending fetch noise')
+            logging.info('----')
             return temp_noise
         else:
+            logging.info('ending fetch noise')
+            logging.info('----')
             return s[0:self.size_of_signals]
 
     def gen_scene(self, scenario_num_of_speakers, scene_i, current_write_path):
-       
+        logging.info("starting generating example number %s" % self.created_examples)
         S, sig_idx = self.fetch_signals(scenario_num_of_speakers) 
         scenario_RT60 = round(np.random.uniform(low=0.1, high=1.0), 2)
         x = round(np.random.uniform(low=4, high=7), 2)
@@ -255,6 +271,9 @@ class dataset():
             s = s[0: self.sec * self.sr]
             s = s / 1.2 / np.max(np.abs(s))
             sf.write(name, s, self.sr)
+        logging.info("finishing creating example")
+        logging.info("-----")
+        self.created_examples += 1
     
     def create_masks(self):
 
