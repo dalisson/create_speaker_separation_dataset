@@ -273,7 +273,7 @@ class dataset():
 
 
 def main(args):
-  
+    np.random.seed(args.seed)
     Data = dataset(args.in_path, args.noise_path, args.sr, args.sec, args.speaker_percent)
     if not os.path.exists(args.out_path):
         os.mkdir(args.out_path)
@@ -291,6 +291,7 @@ if __name__ == "__main__":
     parser.add_argument('--noise_path', type=str, default='/home/dalissonfigueiredo/repos/swave_facebook_implementation/dataset_creation/wham_noise/tt', help='')
     parser.add_argument('--num_of_speakers', type=int, default=2, help='no of speakers.')
     parser.add_argument('--num_of_scenes', type=int, default=10, help='no of examples.')
+    parser.add_argument('--seed', type=int, default=42, help='seed for random states.')
     parser.add_argument('--speaker_percent', type=float, default=0.4, help='pencentage of audio to main speaker')
     parser.add_argument('--sec', type=int, default=4, help='')
     parser.add_argument('--sr', type=int, default=16000, help='')
